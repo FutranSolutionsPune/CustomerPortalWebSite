@@ -27,6 +27,8 @@ jobs:
           name: CustomerPortalWebSite
           path: ./package
           run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy to IIS
         shell: powershell
