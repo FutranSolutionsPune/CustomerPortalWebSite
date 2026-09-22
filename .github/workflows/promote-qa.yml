@@ -1,0 +1,56 @@
+name: Customer Portal Website - QA Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Successful CI workflow run ID to promote"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  deploy-qa:
+    name: Deploy to QA IIS
+
+    runs-on: [self-hosted, windows, iis, dev]
+
+    environment:
+      name: QA
+
+    steps:
+      - name: Download CI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CustomerPortalWebSite
+          path: ./package
+          run-id: ${{ inputs.run_id }}
+
+      - name: Verify artifact
+        shell: powershell
+        run: |
+          Write-Host "Promoting CI Run ID: ${{ inputs.run_id }}"
+          Write-Host "Artifact contents:"
+          Get-ChildItem ".\package" -Recurse
+
+      - name: Deploy to QA IIS
+        shell: powershell
+        run: |
+          $target = "C:\inetpub\wwwroot\MyProject-QA"
+
+          if (-not (Test-Path $target)) {
+              New-Item -ItemType Directory -Path $target -Force | Out-Null
+          }
+
+          Remove-Item "$target\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+          Copy-Item ".\package\*" $target -Recurse -Force
+
+      - name: Verify QA deployment
+        shell: powershell
+        run: |
+          Write-Host "QA deployment completed."
+          Get-ChildItem "C:\inetpub\wwwroot\MyProject-QA"
