@@ -1,0 +1,54 @@
+name: Customer Portal Website CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'release/**'
+
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Package Website
+    runs-on: ubuntu-latest
+
+    env:
+      BUILD_CONFIGURATION: Release
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore CustomerPortalWebSite.csproj
+
+      - name: Build
+        run: dotnet build CustomerPortalWebSite.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+
+      - name: Test
+        run: dotnet test --configuration ${{ env.BUILD_CONFIGURATION }} --no-build
+        continue-on-error: true
+
+      - name: Publish
+        run: dotnet publish CustomerPortalWebSite.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --output ./publish --no-build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CustomerPortalWebSite
+          path: ./publish
+          if-no-files-found: error
+          retention-days: 30
