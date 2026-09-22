@@ -1,0 +1,46 @@
+name: Customer Portal Website - DEV Deployment
+
+on:
+  workflow_run:
+    workflows:
+      - Customer Portal Website CI
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  deploy-dev:
+    name: Deploy to DEV IIS
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, windows, iis, dev]
+
+    environment:
+      name: DEV
+
+    steps:
+      - name: Download CI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CustomerPortalWebSite
+          path: ./package
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Deploy to IIS
+        shell: powershell
+        run: |
+          $target = "C:\inetpub\wwwroot\MyProject-TEST"
+
+          if (Test-Path $target) {
+              Remove-Item "$target\*" -Recurse -Force
+          }
+
+          Copy-Item ".\package\*" $target -Recurse -Force
+
+      - name: Verify deployment
+        shell: powershell
+        run: |
+          Write-Host "Deployment completed."
+          Get-ChildItem "C:\inetpub\wwwroot\MyProject-TEST"
