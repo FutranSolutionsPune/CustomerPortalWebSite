@@ -1,20 +1,20 @@
-name: Customer Portal Website - QA Promotion
+name: Customer Portal Website - QA Deployment
 
 on:
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: "Successful CI workflow run ID to promote"
-        required: true
-        type: string
+  workflow_run:
+    workflows:
+      - Customer Portal Website CI
+    types:
+      - completed
 
 permissions:
   actions: read
   contents: read
 
 jobs:
-  promote-qa:
-    name: Promote to QA IIS
+  deploy-qa:
+    name: Deploy to QA IIS
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'release/') }}
     runs-on: [self-hosted, windows, iis, dev]
 
     environment:
@@ -26,52 +26,22 @@ jobs:
         with:
           name: CustomerPortalWebSite
           path: ./package
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ github.event.workflow_run.id }}
           repository: ${{ github.repository }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify artifact
-        shell: powershell
-        run: |
-          Write-Host "Promoting CI Run ID: ${{ inputs.run_id }}"
-          Write-Host "Artifact contents:"
-          Get-ChildItem ".\package" -Recurse
-
-      - name: Deploy to QA IIS
+      - name: Deploy to IIS
         shell: powershell
         run: |
           $target = "C:\inetpub\wwwroot\MyProject-QA"
-          $offlineFile = Join-Path $target "app_offline.htm"
 
-          if (-not (Test-Path $target)) {
-              New-Item -ItemType Directory -Path $target -Force | Out-Null
+          if (Test-Path $target) {
+              Remove-Item "$target\*" -Recurse -Force
           }
 
-          Write-Host "Putting QA application offline..."
+          Copy-Item ".\package\*" $target -Recurse -Force
 
-          Set-Content -Path $offlineFile -Value @"
-          <!DOCTYPE html>
-          <html>
-          <head><title>Deployment in progress</title></head>
-          <body><h2>Deployment in progress...</h2></body>
-          </html>
-          "@
-
-          Start-Sleep -Seconds 8
-
-          Write-Host "Copying SAME CI artifact to QA..."
-
-          robocopy ".\package" $target /MIR /R:3 /W:5
-
-          if ($LASTEXITCODE -gt 7) {
-              throw "Robocopy failed with exit code $LASTEXITCODE"
-          }
-
-          Remove-Item $offlineFile -Force
-
-          Write-Host "QA deployment completed successfully."
-
-      - name: Verify QA deployment
+      - name: Verify deployment
         shell: powershell
         run: |
           Write-Host "QA deployment completed."
