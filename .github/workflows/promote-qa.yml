@@ -33,13 +33,28 @@ jobs:
       - name: Deploy to IIS
         shell: powershell
         run: |
+          Import-Module WebAdministration
+
+          $appPool = "MyProject-QA"
           $target = "C:\inetpub\wwwroot\MyProject-QA"
 
+          Write-Host "Stopping IIS App Pool: $appPool"
+          Stop-WebAppPool -Name $appPool
+
+          Start-Sleep -Seconds 5
+
+          Write-Host "Removing existing application files..."
           if (Test-Path $target) {
               Remove-Item "$target\*" -Recurse -Force
           }
 
+          Write-Host "Copying new application files..."
           Copy-Item ".\package\*" $target -Recurse -Force
+
+          Write-Host "Starting IIS App Pool: $appPool"
+          Start-WebAppPool -Name $appPool
+
+          Write-Host "QA deployment completed."
 
       - name: Verify deployment
         shell: powershell
