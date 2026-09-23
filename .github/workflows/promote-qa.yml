@@ -1,4 +1,4 @@
-name: Customer Portal Website - QA Deployment
+name: Customer Portal Website - QA Promotion
 
 on:
   workflow_dispatch:
@@ -13,9 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  deploy-qa:
-    name: Deploy to QA IIS
-
+  promote-qa:
+    name: Promote to QA IIS
     runs-on: [self-hosted, windows, iis, dev]
 
     environment:
@@ -28,6 +27,8 @@ jobs:
           name: CustomerPortalWebSite
           path: ./package
           run-id: ${{ inputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify artifact
         shell: powershell
@@ -40,14 +41,35 @@ jobs:
         shell: powershell
         run: |
           $target = "C:\inetpub\wwwroot\MyProject-QA"
+          $offlineFile = Join-Path $target "app_offline.htm"
 
           if (-not (Test-Path $target)) {
               New-Item -ItemType Directory -Path $target -Force | Out-Null
           }
 
-          Remove-Item "$target\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "Putting QA application offline..."
 
-          Copy-Item ".\package\*" $target -Recurse -Force
+          Set-Content -Path $offlineFile -Value @"
+          <!DOCTYPE html>
+          <html>
+          <head><title>Deployment in progress</title></head>
+          <body><h2>Deployment in progress...</h2></body>
+          </html>
+          "@
+
+          Start-Sleep -Seconds 8
+
+          Write-Host "Copying SAME CI artifact to QA..."
+
+          robocopy ".\package" $target /MIR /R:3 /W:5
+
+          if ($LASTEXITCODE -gt 7) {
+              throw "Robocopy failed with exit code $LASTEXITCODE"
+          }
+
+          Remove-Item $offlineFile -Force
+
+          Write-Host "QA deployment completed successfully."
 
       - name: Verify QA deployment
         shell: powershell
