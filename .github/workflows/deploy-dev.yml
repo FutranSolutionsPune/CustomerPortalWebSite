@@ -34,37 +34,12 @@ jobs:
         shell: powershell
         run: |
           $target = "C:\inetpub\wwwroot\MyProject-TEST"
-          $offlineFile = Join-Path $target "app_offline.htm"
 
-          if (-not (Test-Path $target)) {
-              New-Item -ItemType Directory -Path $target -Force | Out-Null
+          if (Test-Path $target) {
+              Remove-Item "$target\*" -Recurse -Force
           }
 
-          Write-Host "Putting application offline..."
-
-          Set-Content -Path $offlineFile -Value @"
-          <!DOCTYPE html>
-          <html>
-          <head><title>Deployment in progress</title></head>
-          <body><h2>Deployment in progress...</h2></body>
-          </html>
-          "@
-
-          Start-Sleep -Seconds 8
-
-          Write-Host "Copying CI artifact to DEV..."
-
-          robocopy ".\package" $target /MIR /R:3 /W:5
-
-          if ($LASTEXITCODE -gt 7) {
-              throw "Robocopy failed with exit code $LASTEXITCODE"
-          }
-
-          Write-Host "Removing offline page..."
-
-          Remove-Item $offlineFile -Force
-
-          Write-Host "DEV deployment completed successfully."
+          Copy-Item ".\package\*" $target -Recurse -Force
 
       - name: Verify deployment
         shell: powershell
