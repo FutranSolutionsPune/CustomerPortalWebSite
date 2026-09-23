@@ -35,7 +35,7 @@ jobs:
         run: |
           Import-Module WebAdministration
 
-          $appPool = "MyProject-QA"
+          $appPool = "DefaultAppPool"
           $target = "C:\inetpub\wwwroot\MyProject-QA"
 
           Write-Host "Stopping IIS App Pool: $appPool"
