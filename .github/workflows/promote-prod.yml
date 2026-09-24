@@ -1,22 +1,21 @@
 name: Customer Portal Website - PROD Deployment
 
 on:
-  workflow_dispatch:
-    inputs:
-      ci_run_id:
-        description: 'Successful CI workflow run ID containing the release artifact'
-        required: true
-        type: string
+  workflow_run:
+    workflows:
+      - Customer Portal Website - QA Deployment
+    types:
+      - completed
 
 permissions:
   actions: read
   contents: read
 
 jobs:
-
   deploy-prod:
-
     name: Deploy to PROD IIS
+
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     runs-on: [self-hosted, windows, iis, prod]
 
@@ -24,13 +23,12 @@ jobs:
       name: PROD
 
     steps:
-
-      - name: Download release artifact
+      - name: Download CI artifact
         uses: actions/download-artifact@v4
         with:
           name: CustomerPortalWebSite
           path: ./package
-          run-id: ${{ inputs.ci_run_id }}
+          run-id: ${{ github.event.workflow_run.id }}
           repository: ${{ github.repository }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -49,17 +47,15 @@ jobs:
       - name: Deploy to PROD IIS
         shell: powershell
         run: |
-
           Import-Module WebAdministration
 
           $appPool = "MyProject-PROD"
           $target  = "C:\inetpub\wwwroot\MyProject-PROD"
 
-          Write-Host "Stopping IIS App Pool..."
-
+          Write-Host "Stopping IIS App Pool: $appPool"
           Stop-WebAppPool -Name $appPool
 
-          Start-Sleep -Seconds 3
+          Start-Sleep -Seconds 5
 
           Write-Host "Removing existing application files..."
 
@@ -67,19 +63,16 @@ jobs:
               Remove-Item "$target\*" -Recurse -Force
           }
 
-          Write-Host "Copying release artifact..."
+          Write-Host "Copying application files..."
 
-          Copy-Item ".\package\*" `
-            $target `
-            -Recurse `
-            -Force
+          Copy-Item ".\package\*" $target -Recurse -Force
 
-          Write-Host "Starting IIS App Pool..."
-
+          Write-Host "Starting IIS App Pool: $appPool"
           Start-WebAppPool -Name $appPool
 
           Start-Sleep -Seconds 5
 
+          Write-Host "Starting IIS Website"
           Start-Website -Name "MyProject-PROD"
 
           Write-Host "PROD deployment completed."
@@ -87,14 +80,14 @@ jobs:
       - name: Verify PROD
         shell: powershell
         run: |
-
           Write-Host "=== PROD VERIFICATION ==="
 
           Get-Website -Name "MyProject-PROD" |
             Select-Object Name, State, PhysicalPath, ApplicationPool
 
-          Get-ChildItem `
-            "C:\inetpub\wwwroot\MyProject-PROD" |
+          Write-Host "=== DEPLOYED FILES ==="
+
+          Get-ChildItem "C:\inetpub\wwwroot\MyProject-PROD" |
             Select-Object Name, Length
 
           Write-Host "PROD deployment successful."
