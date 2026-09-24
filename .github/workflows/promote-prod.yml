@@ -1,48 +1,79 @@
 name: Customer Portal Website - PROD Deployment
 
 on:
-  workflow_run:
-    workflows:
-      - Customer Portal Website - QA Deployment
-    types:
-      - completed
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: "Original CI workflow run ID"
+        required: true
+        type: string
+
+      release_branch:
+        description: "Release branch being promoted"
+        required: true
+        type: string
 
 permissions:
   actions: read
   contents: read
 
 jobs:
+
   deploy-prod:
+
     name: Deploy to PROD IIS
 
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
     runs-on: [self-hosted, windows, iis, prod]
+
+    concurrency:
+      group: production-deployment
+      cancel-in-progress: false
 
     environment:
       name: PROD
 
     steps:
-      - name: Download CI artifact
+
+      - name: Display release information
+        shell: powershell
+        run: |
+          Write-Host "======================================"
+          Write-Host "GTL PROD DEPLOYMENT"
+          Write-Host "======================================"
+          Write-Host "CI Run ID: ${{ inputs.ci_run_id }}"
+          Write-Host "Release Branch: ${{ inputs.release_branch }}"
+          Write-Host "======================================"
+
+      - name: Download exact CI artifact
         uses: actions/download-artifact@v4
         with:
           name: CustomerPortalWebSite
           path: ./package
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ inputs.ci_run_id }}
           repository: ${{ github.repository }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
 
       - name: Verify artifact
         shell: powershell
         run: |
-          Write-Host "=== PROD ARTIFACT ==="
+          Write-Host "======================================"
+          Write-Host "PROD ARTIFACT"
+          Write-Host "======================================"
 
           if (-not (Test-Path ".\package")) {
               throw "Artifact was not downloaded."
           }
 
-          Get-ChildItem ".\package" -Recurse |
+          $files = Get-ChildItem ".\package" -Recurse
+
+          if ($files.Count -eq 0) {
+              throw "Artifact package is empty."
+          }
+
+          $files |
             Select-Object FullName, Length
+
+          Write-Host "Artifact verification successful."
 
       - name: Deploy to PROD IIS
         shell: powershell
@@ -53,6 +84,7 @@ jobs:
           $target  = "C:\inetpub\wwwroot\MyProject-PROD"
 
           Write-Host "Stopping IIS App Pool: $appPool"
+
           Stop-WebAppPool -Name $appPool
 
           Start-Sleep -Seconds 5
@@ -68,11 +100,13 @@ jobs:
           Copy-Item ".\package\*" $target -Recurse -Force
 
           Write-Host "Starting IIS App Pool: $appPool"
+
           Start-WebAppPool -Name $appPool
 
           Start-Sleep -Seconds 5
 
-          Write-Host "Starting IIS Website"
+          Write-Host "Starting IIS Website..."
+
           Start-Website -Name "MyProject-PROD"
 
           Write-Host "PROD deployment completed."
@@ -80,14 +114,18 @@ jobs:
       - name: Verify PROD
         shell: powershell
         run: |
-          Write-Host "=== PROD VERIFICATION ==="
+          Write-Host "======================================"
+          Write-Host "PROD VERIFICATION"
+          Write-Host "======================================"
 
           Get-Website -Name "MyProject-PROD" |
             Select-Object Name, State, PhysicalPath, ApplicationPool
 
-          Write-Host "=== DEPLOYED FILES ==="
+          Write-Host ""
+          Write-Host "Deployed files:"
 
           Get-ChildItem "C:\inetpub\wwwroot\MyProject-PROD" |
             Select-Object Name, Length
 
+          Write-Host ""
           Write-Host "PROD deployment successful."
