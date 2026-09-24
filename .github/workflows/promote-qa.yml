@@ -61,3 +61,17 @@ jobs:
         run: |
           Write-Host "QA deployment completed."
           Get-ChildItem "C:\inetpub\wwwroot\MyProject-QA"
+
+  qa-approval:
+    name: QA Approval
+    needs: deploy-qa
+    runs-on: ubuntu-latest
+
+    environment:
+      name: QA-VALIDATION
+
+    steps:
+      - name: QA validation approved
+        run: |
+          echo "QA validation approved."
+          echo "Release is authorized to proceed to PROD."
