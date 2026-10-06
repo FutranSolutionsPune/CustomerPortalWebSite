@@ -1,9 +1,29 @@
 ﻿@page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home page";
+    ViewData["Title"] = "Customer Portal";
 }
 
 <div class="text-center">
-    <h1> P O C</h1>
+
+    <h1>Customer Portal POC</h1>
+
+    <hr />
+
+    @if (Model.CustomerRewardsEnabled)
+    {
+        <div>
+            <h2>🎁 Customer Rewards</h2>
+            <p>QA1 Feature - Customer Rewards is ENABLED.</p>
+        </div>
+    }
+
+    @if (Model.PaymentGatewayEnabled)
+    {
+        <div>
+            <h2>💳 Payment Gateway</h2>
+            <p>QA2 Feature - Payment Gateway is ENABLED.</p>
+        </div>
+    }
+
 </div>
