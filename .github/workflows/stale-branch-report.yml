@@ -76,9 +76,11 @@ jobs:
 
             stale.sort((a, b) => b.days - a.days);
 
-            const lines = stale.map(b =>
-              `| \`${b.name}\` | ${b.date} | ${b.days} | \`${b.sha}\` |`
-            );
+            const lines = stale.length
+              ? stale.map(b =>
+                  `| \`${b.name}\` | ${b.date} | ${b.days} | \`${b.sha}\` |`
+                )
+              : ["| — | — | — | — |"];
 
             const body = [
               "<!-- stale-branch-report -->",
@@ -104,7 +106,7 @@ jobs:
             core.setOutput("body", body);
             core.setOutput("count", String(stale.length));
 
-      - name: Create or update report issue
+      - name: Create dated report issue
         if: steps.report.outputs.count != '0'
         uses: actions/github-script@v7
         env:
@@ -112,29 +114,40 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const marker = "<!-- stale-branch-report -->";
-            const title = "[Branch Cleanup] Weekly stale branch report";
             const body = process.env.REPORT_BODY;
+
+            // Use UTC date for consistent scheduled/manual runs.
+            const reportDate = new Date().toISOString().slice(0, 10);
+            const title =
+              `[Branch Cleanup] Stale Branch Report - ${reportDate}`;
 
             const issues = await github.paginate(
               github.rest.issues.listForRepo,
-              { owner, repo, state: "open", per_page: 100 }
+              { owner, repo, state: "all", per_page: 100 }
             );
 
             const existing = issues.find(issue =>
               !issue.pull_request &&
-              issue.title === title &&
-              issue.body?.includes(marker)
+              issue.title === title
             );
 
             if (existing) {
-              await github.rest.issues.update({
-                owner,
-                repo,
-                issue_number: existing.number,
-                body
-              });
-              core.info(`Updated stale branch report issue #${existing.number}`);
+              if (existing.state === "open") {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: existing.number,
+                  body
+                });
+
+                core.info(
+                  `Updated today's report issue #${existing.number}`
+                );
+              } else {
+                core.info(
+                  `Today's report issue #${existing.number} is closed; no duplicate created.`
+                );
+              }
             } else {
               const created = await github.rest.issues.create({
                 owner,
@@ -142,5 +155,8 @@ jobs:
                 title,
                 body
               });
-              core.info(`Created stale branch report issue #${created.data.number}`);
+
+              core.info(
+                `Created dated report issue #${created.data.number}`
+              );
             }
