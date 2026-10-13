@@ -1,0 +1,143 @@
+
+name: Stale Branch Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every Monday at 09:00 UTC
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: stale-branch-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Report stale branches
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Find stale branches
+        id: report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const cutoffDays = 30;
+            const cutoff = Date.now() - cutoffDays * 24 * 60 * 60 * 1000;
+
+            const branches = await github.paginate(
+              github.rest.repos.listBranches,
+              { owner, repo, per_page: 100 }
+            );
+
+            const stale = [];
+
+            for (const branch of branches) {
+              const name = branch.name;
+
+              // Never report protected primary/release branches.
+              if (name === "main" || name.startsWith("release/")) {
+                continue;
+              }
+
+              const commit = await github.rest.repos.getCommit({
+                owner,
+                repo,
+                ref: branch.commit.sha
+              });
+
+              const commitDate = new Date(
+                commit.data.commit.committer?.date ||
+                commit.data.commit.author?.date
+              );
+
+              if (Number.isNaN(commitDate.getTime()) ||
+                  commitDate.getTime() > cutoff) {
+                continue;
+              }
+
+              stale.push({
+                name,
+                date: commitDate.toISOString().slice(0, 10),
+                days: Math.floor(
+                  (Date.now() - commitDate.getTime()) /
+                  (24 * 60 * 60 * 1000)
+                ),
+                sha: branch.commit.sha.slice(0, 7)
+              });
+            }
+
+            stale.sort((a, b) => b.days - a.days);
+
+            const lines = stale.length
+              ? stale.map(b =>
+                  `| \`${b.name}\` | ${b.date} | ${b.days} | \`${b.sha}\` |`
+                )
+              : ["| — | — | — | — |"];
+
+            const body = [
+              "<!-- stale-branch-report -->",
+              "## Weekly stale branch report",
+              "",
+              `Generated: ${new Date().toISOString()}`,
+              "",
+              `Branches with no new commit for **${cutoffDays} days or more**: **${stale.length}**`,
+              "",
+              "This report is informational only. **No branches are deleted automatically.**",
+              "",
+              "| Branch | Latest commit date | Inactive days | Latest commit |",
+              "|---|---|---:|---|",
+              ...lines,
+              "",
+              "### Review actions",
+              "- Confirm branch ownership and whether the work is still needed.",
+              "- Check open pull requests and unmerged commits before proposing deletion.",
+              "- Retain release branches until the release owner approves retirement.",
+              "- Delete a branch only after the responsible owner confirms it is safe."
+            ].join("\n");
+
+            core.setOutput("body", body);
+            core.setOutput("count", String(stale.length));
+
+      - name: Create or update report issue
+        uses: actions/github-script@v7
+        env:
+          REPORT_BODY: ${{ steps.report.outputs.body }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const marker = "<!-- stale-branch-report -->";
+            const title = "[Branch Cleanup] Weekly stale branch report";
+            const body = process.env.REPORT_BODY;
+
+            const issues = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: "open", per_page: 100 }
+            );
+
+            const existing = issues.find(issue =>
+              !issue.pull_request &&
+              issue.title === title &&
+              issue.body?.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner, repo,
+                issue_number: existing.number,
+                body
+              });
+              core.info(`Updated stale branch report issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner, repo,
+                title,
+                body
+              });
+              core.info(`Created stale branch report issue #${created.data.number}`);
+            }
