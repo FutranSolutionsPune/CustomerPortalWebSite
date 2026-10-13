@@ -27,7 +27,7 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const cutoffDays = 30;
+            const cutoffDays = 7;
             const cutoff = Date.now() - cutoffDays * 24 * 60 * 60 * 1000;
 
             const branches = await github.paginate(
